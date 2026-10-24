@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4fd8">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Fake News Detector</title>
+<style>
+:root{--bg:#f7f6f2;--card:#fff;--ink:#1c1c1a;--mute:#6b6a64;--line:#e3e1d9;--accent:#1f4fd8;--good:#1e8a4c;--warn:#c98a00;--bad:#c2362b;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#151514;--card:#201f1d;--ink:#efede6;--mute:#a09e95;--line:#33312d;--accent:#7b9dff;--good:#4cc27c;--warn:#e5b13a;--bad:#ef6a5e;color-scheme:dark}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+header{padding:12px 16px 4px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{font-size:1.25rem;margin:0}
+select{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px;font:inherit}
+.sub{color:var(--mute);margin:0 16px 8px;font-size:.9rem}
+main{flex:1;overflow-y:auto;padding:8px 16px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+textarea{width:100%;min-height:150px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;resize:vertical}
+button.go{width:100%;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:14px;font:inherit;font-weight:600;margin-top:10px}
+button.go:disabled{opacity:.5}
+.pill{display:inline-block;padding:4px 12px;border-radius:99px;font-weight:700;color:#fff;font-size:.9rem}
+.mute{color:var(--mute);font-size:.85rem}
+a{color:var(--accent)}
+.src{padding:8px 0;border-top:1px solid var(--line)}
+nav{display:flex;border-top:1px solid var(--line);background:var(--card);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;border:0;color:var(--mute);padding:14px;font:inherit;font-weight:600}
+nav button.on{color:var(--accent)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header><h1 id="t"></h1><select id="lang"><option value="en">English</option><option value="ms">Bahasa Malaysia</option><option value="id">Bahasa Indonesia</option><option value="zh">中文</option></select></header>
+<p class="sub" id="sub"></p>
+<main>
+  <section id="vCheck">
+    <div class="card">
+      <textarea id="claim"></textarea>
+      <button class="go" id="go"></button>
+      <p class="mute" id="disc"></p>
+    </div>
+    <div id="res" class="card hidden"></div>
+  </section>
+  <section id="vFeed" class="hidden"><div id="feed"></div></section>
+</main>
+<nav><button id="n1" class="on"></button><button id="n2"></button></nav>
+<script>
+// For the Capacitor (native) build, set API_BASE to your deployed site, e.g. 'https://your-site.netlify.app'
+const CONFIG = { API_BASE: '' };
+const T = {
+ en:{t:'Fake News Detector',sub:'Paste a message or claim to check',c:'Check',f:'Latest',ph:'Paste a WhatsApp message or claim here…',go:'Check now',wait:'Checking…',disc:'Results are a guide, not proof. Always open the source links.',src:'Sources',err:'Something went wrong. Try again.',none:'Nothing yet',v:{TRUE:'TRUE',FALSE:'FALSE',MISLEADING:'MISLEADING',PARTIAL:'PARTLY TRUE',UNVERIFIED:'NOT VERIFIED'}},
+ ms:{t:'Pengesan Berita Palsu',sub:'Tampal mesej atau dakwaan untuk disemak',c:'Semak',f:'Terkini',ph:'Tampal mesej WhatsApp atau dakwaan di sini…',go:'Semak sekarang',wait:'Menyemak…',disc:'Keputusan ialah petunjuk, bukan bukti. Sentiasa buka pautan sumber.',src:'Sumber',err:'Ralat. Cuba lagi.',none:'Tiada lagi',v:{TRUE:'BENAR',FALSE:'PALSU',MISLEADING:'MENGELIRUKAN',PARTIAL:'SEBAHAGIAN BENAR',UNVERIFIED:'BELUM DISAHKAN'}},
+ id:{t:'Pendeteksi Berita Palsu',sub:'Tempel pesan atau klaim untuk dicek',c:'Cek',f:'Terbaru',ph:'Tempel pesan WhatsApp atau klaim di sini…',go:'Cek sekarang',wait:'Memeriksa…',disc:'Hasil hanyalah petunjuk, bukan bukti. Selalu buka tautan sumber.',src:'Sumber',err:'Terjadi kesalahan. Coba lagi.',none:'Belum ada',v:{TRUE:'BENAR',FALSE:'HOAKS',MISLEADING:'MENYESATKAN',PARTIAL:'SEBAGIAN BENAR',UNVERIFIED:'BELUM TERVERIFIKASI'}},
+ zh:{t:'假新闻检测器',sub:'粘贴消息或说法进行核查',c:'核查',f:'最新',ph:'在此粘贴WhatsApp消息或说法…',go:'立即核查',wait:'核查中…',disc:'结果仅供参考，并非证据。请务必打开来源链接。',src:'来源',err:'出错了，请重试。',none:'暂无内容',v:{TRUE:'属实',FALSE:'虚假',MISLEADING:'误导',PARTIAL:'部分属实',UNVERIFIED:'尚未证实'}}
+};
+const $ = id => document.getElementById(id);
+const colour = v => v==='TRUE'?'var(--good)':v==='FALSE'?'var(--bad)':v==='UNVERIFIED'?'var(--mute)':'var(--warn)';
+let L = 'en'; try{ L = localStorage.getItem('lang') || ''; }catch(e){}
+if(!T[L]){ const n=(navigator.language||'en').toLowerCase(); L = n.startsWith('ms')?'ms':n.startsWith('id')?'id':n.startsWith('zh')?'zh':'en'; }
+function txt(el,s){ el.textContent=s; }
+function apply(){
+  const t=T[L]; document.documentElement.lang=L; $('lang').value=L;
+  txt($('t'),t.t); txt($('sub'),t.sub); txt($('n1'),t.c); txt($('n2'),t.f);
+  $('claim').placeholder=t.ph; txt($('go'),t.go); txt($('disc'),t.disc);
+}
+$('lang').onchange=e=>{ L=e.target.value; try{localStorage.setItem('lang',L)}catch(x){} apply(); };
+function tab(n){ $('vCheck').classList.toggle('hidden',n!==1); $('vFeed').classList.toggle('hidden',n!==2); $('n1').classList.toggle('on',n===1); $('n2').classList.toggle('on',n===2); if(n===2) loadFeed(); }
+$('n1').onclick=()=>tab(1); $('n2').onclick=()=>tab(2);
+
+$('go').onclick=async()=>{
+  const claim=$('claim').value.trim(); if(claim.length<8) return;
+  const t=T[L], res=$('res'); $('go').disabled=true; txt($('go'),t.wait);
+  try{
+    const r=await fetch(CONFIG.API_BASE+'/api/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({claim,lang:L})});
+    if(!r.ok) throw 0; const d=await r.json();
+    res.textContent=''; res.classList.remove('hidden');
+    const p=document.createElement('span'); p.className='pill'; p.style.background=colour(d.verdict); txt(p,t.v[d.verdict]||d.verdict); res.appendChild(p);
+    const s=document.createElement('p'); txt(s,d.summary||''); res.appendChild(s);
+    if(d.sources&&d.sources.length){ const h=document.createElement('div'); h.className='mute'; txt(h,t.src); res.appendChild(h);
+      d.sources.forEach(x=>{ const w=document.createElement('div'); w.className='src'; const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener'; txt(a,x.title||x.url); w.appendChild(a); const m=document.createElement('div'); m.className='mute'; txt(m,[x.publisher,x.rating].filter(Boolean).join(' · ')); w.appendChild(m); res.appendChild(w); }); }
+  }catch(e){ res.classList.remove('hidden'); txt(res,t.err); }
+  $('go').disabled=false; txt($('go'),t.go);
+};
+let feedLoaded=false;
+async function loadFeed(){
+  if(feedLoaded) return; const box=$('feed'), t=T[L];
+  try{
+    const r=await fetch(CONFIG.API_BASE+'/api/feed'); const d=await r.json(); box.textContent='';
+    if(!d.items.length){ txt(box,t.none); return; }
+    feedLoaded=true;
+    d.items.forEach(i=>{ const c=document.createElement('div'); c.className='card'; const a=document.createElement('a'); a.href=i.url; a.target='_blank'; a.rel='noopener'; txt(a,i.title); c.appendChild(a); const m=document.createElement('div'); m.className='mute'; txt(m,i.publisher+' · '+i.country+(i.date?' · '+new Date(i.date).toLocaleDateString():'')); c.appendChild(m); box.appendChild(c); });
+  }catch(e){ txt(box,t.err); }
+}
+// Prefill when content is shared to the installed app (Android share sheet / WhatsApp)
+const shared=new URLSearchParams(location.search).get('text'); if(shared) $('claim').value=shared;
+apply();
+if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

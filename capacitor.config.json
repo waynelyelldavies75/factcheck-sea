@@ -1,0 +1,5 @@
+{
+  "appId": "com.yourcompany.factcheck",
+  "appName": "Fake News Detector",
+  "webDir": "public"
+}
